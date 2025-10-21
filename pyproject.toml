@@ -1,0 +1,20 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+
+[project]
+name = "faceblur"
+version = "0.1.0"
+description = "Blur faces in videos"
+readme = "README.md"
+requires-python = ">=3.12"
+dependencies = [
+    "opencv-python>=4.12.0.88",
+    "tqdm>=4.67.1",
+    "typer>=0.19.2",
+    "ultralytics>=8.3.218",
+]
+
+[project.scripts]
+blur = "faceblur.blur.task:app"
