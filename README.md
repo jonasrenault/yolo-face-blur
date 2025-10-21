@@ -2,6 +2,10 @@
 
 Simple Python script to provide a CLI to automatically detect and blur all visible faces in a video input file.
 
+<div align="center">
+    <video src="resources/videos/rugby_blured.mp4" width="640" controls></video>
+</div>
+
 ## Install
 
 This project requires a recent version of python: ![python_version](https://img.shields.io/badge/Python-%3E=3.12-blue).
