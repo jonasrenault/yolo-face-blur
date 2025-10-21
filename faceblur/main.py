@@ -1,15 +1,31 @@
 import logging
+from enum import Enum
 from pathlib import Path
-from typing import Annotated
+from typing import Annotated, Literal
 
 import cv2
 import typer
+from rich.logging import RichHandler
 from tqdm import tqdm
 from ultralytics import YOLO
 
-app = typer.Typer()
 
+FORMAT = "%(message)s"
+logging.basicConfig(
+    level=logging.INFO,
+    format=FORMAT,
+    datefmt="[%X]",
+    handlers=[RichHandler(markup=True)],
+)
+app = typer.Typer()
 LOGGER = logging.getLogger(__name__)
+
+
+class FaceDetectionModel(str, Enum):
+    n = "yolov12n-face.pt"
+    s = "yolov12s-face.pt"
+    m = "yolov12m-face.pt"
+    l = "yolov12l-face.pt"  # noqa: E741
 
 
 @app.command()
@@ -24,40 +40,53 @@ def faces(
             readable=True,
         ),
     ],
+    model_size: Annotated[
+        Literal["n", "s", "m", "l"],
+        typer.Option("--model", "-m", help="Model size.", case_sensitive=False),
+    ] = "n",
 ):
     """
     Args:
         input (Path): Path to input video.
     """
 
-    # Open the input movie file
-    input_movie = cv2.VideoCapture(str(input))
-    nb_frames = int(input_movie.get(cv2.CAP_PROP_FRAME_COUNT))
-    width = int(input_movie.get(cv2.CAP_PROP_FRAME_WIDTH))
-    height = int(input_movie.get(cv2.CAP_PROP_FRAME_HEIGHT))
-    fps = input_movie.get(cv2.CAP_PROP_FPS)
+    # Open the input movie file and read props
+    video = cv2.VideoCapture(str(input))
+    if not video.isOpened():
+        error = "Unable to open video file {input}."
+        LOGGER.error(error)
+        raise RuntimeError(error)
 
-    # Create an output movie file (make sure resolution/frame rate matches input video!)
-    fourcc = cv2.VideoWriter_fourcc(*"mp4v")  # type: ignore
-    # fourcc = cv2.VideoWriter_fourcc(*"XVID")  # type: ignore
+    nb_frames = int(video.get(cv2.CAP_PROP_FRAME_COUNT))
+    width = int(video.get(cv2.CAP_PROP_FRAME_WIDTH))
+    height = int(video.get(cv2.CAP_PROP_FRAME_HEIGHT))
+    fps = video.get(cv2.CAP_PROP_FPS)
 
+    # Create an output file with same resolution & frame rate as input
     outfile = input.with_stem(input.stem + "_blured").with_suffix(".mp4")
+    out = cv2.VideoWriter(
+        str(outfile), cv2.VideoWriter_fourcc(*"mp4v"), fps, (width, height)  # type: ignore
+    )
 
-    out = cv2.VideoWriter(str(outfile), fourcc, fps, (width, height))
+    # Create face detection model
+    model_name = FaceDetectionModel[model_size]
+    model = YOLO(Path() / "resources/models" / model_name.value)
 
-    model = YOLO("yolov12n-face.pt")
+    LOGGER.info(
+        f"Processing [bold green]{input}[/] video file with {nb_frames} frames "
+        f"to [bold red]{outfile}[/] using {model_name.value} model..."
+    )
 
     frames = 0
-    with tqdm(
-        total=nb_frames,
-        desc=f"Processing {input} with {nb_frames} frames to {outfile}...",
-    ) as pbar:
-        while input_movie.isOpened():
-            ret, frame = input_movie.read()
+    with tqdm(total=nb_frames, unit="frame") as pbar:
+        while video.isOpened():
+            ret, frame = video.read()
             frames += 1
 
             # Quit when the input video file ends
             if not ret:
+                if frames < nb_frames:
+                    pbar.update(nb_frames - frames)
                 break
 
             results = model.predict(frame, show=False, verbose=False)
@@ -81,7 +110,7 @@ def faces(
             pbar.update(1)
 
     # All done!
-    input_movie.release()
+    video.release()
     out.release()
     cv2.destroyAllWindows()
 

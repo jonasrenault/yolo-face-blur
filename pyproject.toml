@@ -17,7 +17,7 @@ dependencies = [
 ]
 
 [project.scripts]
-blur = "faceblur.blur.task:app"
+blur = "faceblur.main:app"
 
 [dependency-groups]
 dev = [
