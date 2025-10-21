@@ -23,7 +23,7 @@ LOGGER = logging.getLogger(__name__)
 # Create CLI app
 app = typer.Typer()
 
-ROOT_DIR = Path(__file__).parent
+ROOT_DIR = Path(__file__).parent.parent
 
 
 class FaceDetectionModel(str, Enum):
