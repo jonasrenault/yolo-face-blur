@@ -4,12 +4,13 @@ from pathlib import Path
 from typing import Annotated, Literal
 
 import cv2
+import torch
 import typer
 from rich.logging import RichHandler
 from tqdm import tqdm
 from ultralytics import YOLO
 
-
+# Setup basic logging with RichHandler
 FORMAT = "%(message)s"
 logging.basicConfig(
     level=logging.INFO,
@@ -17,8 +18,12 @@ logging.basicConfig(
     datefmt="[%X]",
     handlers=[RichHandler(markup=True)],
 )
-app = typer.Typer()
 LOGGER = logging.getLogger(__name__)
+
+# Create CLI app
+app = typer.Typer()
+
+ROOT_DIR = Path(__file__).parent.parent
 
 
 class FaceDetectionModel(str, Enum):
@@ -44,10 +49,17 @@ def faces(
         Literal["n", "s", "m", "l"],
         typer.Option("--model", "-m", help="Model size.", case_sensitive=False),
     ] = "n",
+    conf: Annotated[
+        float, typer.Option("--conf", "-c", help="Confidence threshold.")
+    ] = 0.5,
 ):
     """
+    Perform automatic bluring of faces on input video.
+
     Args:
         input (Path): Path to input video.
+        model_size (Literal["n", "s", "m", "l"], optional): Model size. Defaults to "n".
+        conf (float, optional): Confidence threshold. Defaults to 0.5.
     """
 
     # Open the input movie file and read props
@@ -70,13 +82,12 @@ def faces(
 
     # Create face detection model
     model_name = FaceDetectionModel[model_size]
-    model = YOLO(Path() / "resources/models" / model_name.value)
+    model = YOLO(ROOT_DIR / "resources" / "models" / model_name.value)
 
     LOGGER.info(
         f"Processing [bold green]{input}[/] video file with {nb_frames} frames "
         f"to [bold red]{outfile}[/] using {model_name.value} model..."
     )
-
     frames = 0
     with tqdm(total=nb_frames, unit="frame") as pbar:
         while video.isOpened():
@@ -86,24 +97,26 @@ def faces(
             # Quit when the input video file ends
             if not ret:
                 if frames < nb_frames:
-                    pbar.update(nb_frames - frames)
+                    pbar.update(nb_frames - frames + 1)
                 break
 
-            results = model.predict(frame, show=False, verbose=False)
+            # Get face detections
+            results = model.predict(frame, conf=conf, show=False, verbose=False)
 
             # Process each detection
-            for r in results:
-                for box in r.boxes:
-                    y1, x1, y2, x2 = box.xyxy[0].detach().to(int).tolist()
+            for result in results:
+                if result.boxes is None:
+                    continue
 
-                    # Extract the region of the image that contains the face
-                    face_image = frame[x1:x2, y1:y2]
+                # Get detection coordinates
+                for box in result.boxes.xyxy.type(torch.int64).tolist():  # type: ignore
+                    y1, x1, y2, x2 = box
 
-                    # Blur the face image
-                    face_image = cv2.GaussianBlur(face_image, (99, 99), 30)
+                    # Blur the region of the image that contains the face
+                    blured_face = cv2.GaussianBlur(frame[x1:x2, y1:y2], (33, 33), 10)
 
                     # Put the blurred face region back into the frame image
-                    frame[x1:x2, y1:y2] = face_image
+                    frame[x1:x2, y1:y2] = blured_face
 
             # write the blurred frame
             out.write(frame)
